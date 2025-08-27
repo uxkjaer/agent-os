@@ -11,6 +11,7 @@ OVERWRITE_INSTRUCTIONS=false
 OVERWRITE_STANDARDS=false
 CLAUDE_CODE=false
 CURSOR=false
+VSCODE=false
 PROJECT_TYPE=""
 
 # Parse command line arguments
@@ -32,7 +33,11 @@ while [[ $# -gt 0 ]]; do
             CLAUDE_CODE=true
             shift
             ;;
-        --cursor|--cursor-cli)
+        --vscode|--vscode-cli)
+            VSCODE=true
+            shift
+            ;;
+         --cursor|--cursor-cli)
             CURSOR=true
             shift
             ;;
@@ -48,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --overwrite-instructions    Overwrite existing instruction files"
             echo "  --overwrite-standards       Overwrite existing standards files"
             echo "  --claude-code               Add Claude Code support"
-            echo "  --cursor                    Add Cursor support"
+            echo "  --vscode                    Add Github CoPilot support"
             echo "  --project-type=TYPE         Use specific project type for installation"
             echo "  -h, --help                  Show this help message"
             echo ""
@@ -122,6 +127,15 @@ if [ "$IS_FROM_BASE" = true ]; then
         fi
     fi
 
+    if [ "$VSCODE" = false ]; then
+        # Check if vscode is enabled in base config
+        if grep -q "vscode:" "$BASE_AGENT_OS/config.yml" && \
+           grep -A1 "vscode:" "$BASE_AGENT_OS/config.yml" | grep -q "enabled: true"; then
+            VSCODE=true
+            echo "  ✓ Auto-enabling VSCode support (from Agent OS config)"
+        fi
+    fi
+
     # Read project type from config or use flag
     if [ -z "$PROJECT_TYPE" ] && [ -f "$BASE_AGENT_OS/config.yml" ]; then
         # Try to read default_project_type from config
@@ -185,6 +199,56 @@ else
 
     # Install instructions and standards from GitHub (no commands folder needed)
     install_from_github "$INSTALL_DIR" "$OVERWRITE_INSTRUCTIONS" "$OVERWRITE_STANDARDS" false
+fi
+
+# Handle Visual Studio Code installation for project
+if [ "$VSCODE" = true ]; then
+    echo ""
+    echo "📥 Installing Claude Code support..."
+    mkdir -p "./.github/prompts"
+    mkdir -p "./.github/agents"
+
+    if [ "$IS_FROM_BASE" = true ]; then
+        # Copy from base installation
+        echo "  📂 Commands:"
+        for cmd in plan-product create-spec create-tasks execute-tasks analyze-product; do
+            if [ -f "$BASE_AGENT_OS/commands/${cmd}.md" ]; then
+                copy_file "$BASE_AGENT_OS/commands/${cmd}.md" "./.github/prompts/${cmd}.prompt.md" "false" "prompts/${cmd}.prompt.md"
+            else
+                echo "  ⚠️  Warning: ${cmd}.md not found in base installation"
+            fi
+        done
+
+        echo ""
+        echo "  📂 Agents:"
+        for agent in context-fetcher date-checker file-creator git-workflow project-manager test-runner; do
+            if [ -f "$BASE_AGENT_OS/vscode/agents/${agent}.md" ]; then
+                copy_file "$BASE_AGENT_OS/vscode/agents/${agent}.md" "./.github/agents/${agent}.md" "false" "agents/${agent}.md"
+            else
+                echo "  ⚠️  Warning: ${agent}.md not found in base installation"
+            fi
+        done
+    else
+        # Download from GitHub when using --no-base
+        echo "  Downloading Visual Studio Code files from GitHub..."
+        echo ""
+        echo "  📂 Commands:"
+        for cmd in plan-product create-spec create-tasks execute-tasks analyze-product; do
+            download_file "${BASE_URL}/commands/${cmd}.md" \
+                "./.github/prompts/${cmd}.prompt.md" \
+                "false" \
+                "prompts/${cmd}.prompt.md"
+        done
+
+        echo ""
+        echo "  📂 Agents:"
+        for agent in context-fetcher date-checker file-creator git-workflow project-manager test-runner; do
+            download_file "${BASE_URL}/vscode/agents/${agent}.md" \
+                "./.github/agents/${agent}.md" \
+                "false" \
+                "agents/${agent}.md"
+        done
+    fi
 fi
 
 # Handle Claude Code installation for project
